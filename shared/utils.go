@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"math/rand"
+	"strconv"
 	"time"
 )
 
@@ -47,4 +48,40 @@ func MessageOut(c Conn, m *Message) ([]byte, error) {
 		}*/
 
 	return b, nil
+}
+
+func route(client Client, cs Conns, c Conn, m *Message) {
+	switch m.Type {
+	case "greeting":
+		return greetingHandler(client, c, m)
+	case "register":
+		return registerHandler(client, c, m)
+	case "establish":
+		return establishHandler(client, c, m)
+	case "connect":
+		return connectHandler(client, c, m)
+	case "key":
+		return keyHandler(client, c, m)
+	case "message":
+		return messageHandler(client, c, m)
+	}
+	return nil, nil
+}
+
+func CreateMessageCallback(client Client) func(Conns, Conn, *Message) {
+	return func(cs Conns, c Conn, m *Message) {
+		res, err := route(client, cs, c, m)
+		if err != nil {
+			fmt.Println(err)
+			client.GetLog().Fatal(err)
+		}
+
+		if res != nil {
+			c.Send(res)
+		}
+	}
+}
+
+func GenPort() string {
+	return ":" + strconv.Itoa(rand.Intn(65535-10000)+10000)
 }

@@ -22,6 +22,21 @@ func (s *Server) OnMessage(f func(cs shared.Conns, c shared.Conn, m *shared.Mess
 	s.messageCallback = f
 }
 
+func (s *Server) CreateConn(addr net.Addr) (shared.Conn, error) {
+	if addr == nil {
+		return nil, errors.New("Conns addr must not be nil")
+	}
+
+	udpAddr, ok := addr.(*net.UDPAddr)
+	if !ok {
+		return nil, errors.New("could not assert net.Addr to *net.Addr")
+	}
+
+	c := shared.NewUDPConn(s.send, udpAddr)
+	s.conns[addr.String()] = c
+	return c, nil
+}
+
 func (s *Server) Listen() {
 	go s.sender()
 

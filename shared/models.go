@@ -1,10 +1,13 @@
 package shared
 
 import (
+	"bufio"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
+	"sync"
 )
 
 type Conn interface {
@@ -13,6 +16,40 @@ type Conn interface {
 	GetAddr() net.Addr
 	GetSecret() ([32]byte, error)
 	SetSecret([32]byte)
+}
+
+type Server interface {
+	Stop()
+	Listen()
+	CreateConn(net.Addr) (Conn, error)
+	OnMessage(f func(Conns, Conn, *Message))
+}
+
+type Client interface {
+	WasKeySent() bool
+	SetKeySent(bool)
+	WasKeyReceived() bool
+	SetKeyReceived(bool)
+	GetServer() Server
+	GetLog() *log.Logger
+	GetSelf() *Peer
+	GetPeer() *Peer
+	SetPeer(*Peer)
+	GetPeerConn() Conn
+	SetPeerConn(Conn)
+	GetServerConn() Conn
+	SetServerConn(Conn)
+	Connect()
+	Stop()
+	Start() error
+	RegisteredCallback(Client)
+	ConnectingCallback(Client)
+	ConnectedCallback(Client)
+	MessageCallback(Client, string)
+	OnRegistered(func(Client))
+	OnConnecting(func(Client))
+	OnConnected(func(Client))
+	OnMessage(func(Client, string))
 }
 
 type UDPPayload struct {
@@ -82,12 +119,30 @@ type Registration struct {
 	//PublicKey string `json:"publickey"`
 }
 
+type History struct {
+	w *bufio.Writer
+	m *sync.Mutex
+}
+
+func (h *History) Add(text string) {
+	h.m.Lock()
+	defer h.m.Unlock()
+	fmt.Fprintln(h.w, text)
+	h.w.Flush()
+}
+
+func NewHistory(f *os.File) *History {
+	return &History{
+		w: bufio.NewWriter(f),
+		m: &sync.Mutex{},
+	}
+}
+
 type Message struct {
 	Type    string      `json:"type"`
 	PeerID  string      `json:"peerID, omitempty"`
 	Error   string      `json:"error, omitempty"`
 	Content interface{} `json:"data, omitempty"`
-	Encrypt bool        `json:"-"`
 	addr    *net.UDPAddr
 }
 
@@ -104,9 +159,23 @@ type Peer struct {
 	ID         string       `json:"id, omitempty"`
 	Username   string       `json:"username, omitempty"`
 	Endpoint   Endpoint     `json:"endpoint,omitempty"`
-	PublicKey  string       `json:"publickey, omitempty"`
-	PrivateKey [32]byte     `json:"-"`
+	PublicKey  string       `json:"publickKey,omitempty"`
+	PrivateKey string       `json:"-"`
 	Addr       *net.UDPAddr `json:"-"`
+}
+
+func (p *Peer) GetPublicKey() ([32]byte, error) {
+	var key [32]byte
+	bs, err := base64.StdEncoding.DecodeString(p.PublicKey)
+	if err != nil {
+		return key, err
+	}
+	copy(key[:], bs)
+	return key, nil
+}
+
+func (p *Peer) SetPublicKey(key [32]byte) {
+	p.PublicKey = base64.StdEncoding
 }
 
 type Peers map[string]*Peer
